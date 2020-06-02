@@ -2,7 +2,6 @@
 # need for docker build
 sudo: true
 dist: bionic
-
 addons:
   apt:
     packages:
@@ -21,18 +20,6 @@ go: 1.13.x
 
 env:
   global:
-    - GOLANGCI_VERSION=v1.21.0
-    - GO111MODULE=on
-    - GOSEC_VERSION=2.0.0
-    - TEST_COVERAGE=stdout
-    - GO_METALINTER_THREADS=1
-    - GO_COVER_DIR=_output
-    - HELM_VERSION=v3.1.2
-    - VM_DRIVER=none
-    - MINIKUBE_VERSION=v1.6.0
-    - CHANGE_MINIKUBE_NONE_USER=true
-    - KUBECONFIG=$HOME/.kube/config
-    # set CEPH_CSI_RUN_ALL_TESTS to non-empty to run all tests
     - CEPH_CSI_RUN_ALL_TESTS=true
 
 before_install:
@@ -63,41 +50,6 @@ stages:
 jobs:
   include:
     - stage: build testing
-      name: static-check-make
-      install:
-        - gem install mdl
-        - pip install --user --upgrade pip
-        - pip install --user yamllint
-        # install golangci-lint
-        - curl -sf
-          "https://install.goreleaser.com/github.com/golangci/golangci-lint.sh"
-          | bash -s -- -b $GOPATH/bin "${GOLANGCI_VERSION}"
-        # install gosec
-        - curl -sfL
-          "https://raw.githubusercontent.com/securego/gosec/master/install.sh"
-          | sh -s -- -b $GOPATH/bin "${GOSEC_VERSION}"
-        # install helm for helm lint
-        - curl -L https://git.io/get_helm.sh
-          | bash -s -- -v "${HELM_VERSION}"
-        # yamllint disable rule:line-length
-        - mkdir -p /opt/commitlint && pushd /opt/commitlint
-          && npm init -y && npm install --save-dev @commitlint/travis-cli && popd
-        # yamllint enable rule:line-length
-        - export PATH=/opt/commitlint/node_modules/.bin:$PATH
-      script:
-        - commitlint-travis
-        - make go-lint
-        - make lint-extras
-        - make gosec
-        - make go-test
-        - make mod-check
-
-    - stage: build testing
-      name: Build multi-architecture image for amd64 and arm64
-      script:
-        - ./scripts/build-multi-arch-image.sh || travis_terminate 1;
-
-    - stage: build testing
       name: cephcsi on Arm64
       dist: xenial   # There are no arm64 builds available in bionic repo
       arch: arm64
@@ -109,28 +61,15 @@ jobs:
         # - Travis Arm64 CI job runs inside unprivileged LXD which blocks
         #   launching minikube test environment
         - travis_terminate 0    # deploy only on x86
-
-    - stage: e2e testing
-      name: cephcsi with kube 1.16.9
+    - stage: build testing
+      name: cephcsi on Amd64
+      dist: xenial   # There are no arm64 builds available in bionic repo
+      arch: amd64
       script:
         - scripts/skip-doc-change.sh || travis_terminate 0;
         - make image-cephcsi || travis_terminate 1;
-        - scripts/travis-functest.sh v1.16.9 || travis_terminate 1;
-
-    - stage: e2e testing
-      name: cephcsi with kube 1.17.5
-      script:
-        - scripts/skip-doc-change.sh || travis_terminate 0;
-        - make image-cephcsi || travis_terminate 1;
-        - scripts/travis-functest.sh v1.17.5 || travis_terminate 1;
-
-    - stage: e2e testing
-      name: cephcsi helm charts with kube 1.17.5
-      script:
-        - scripts/skip-doc-change.sh || travis_terminate 0;
-        - make image-cephcsi || travis_terminate 1;
-        - scripts/travis-helmtest.sh v1.17.5 || travis_terminate 1;
-
-    - stage: deploy
-      name: push artifacts to repositories
-      script: ./deploy.sh
+        # No CI test job is availabe for Arm64 now due to below issues
+        # - k8s-csi sidecar images for Arm64 are not available
+        # - Travis Arm64 CI job runs inside unprivileged LXD which blocks
+        #   launching minikube test environment
+        - travis_terminate 0    # deploy only on x86
